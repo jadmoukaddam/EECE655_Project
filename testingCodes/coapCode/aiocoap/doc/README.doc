@@ -1,0 +1,31 @@
+index hack
+==========
+
+in order to have a readme that is usable for simple ReST builders like github,
+the readme now contains hardwired links to readthedocs or local files.
+sphinx (and thus readthedocs) sees, via the aiocoap_index.py sphinx extension,
+a preprocessed version where all the static links to readthedocs are replaced
+with sphinx-internal directives and properly resolved in the locally built
+docs.
+
+per-module documentation hack
+=============================
+
+pages similar to sphinx-apidoc's output are built by the sphinx module
+aiocoap_index.py in the doc/module/ directory. sphinx-apidoc is not used here
+because it would need to be invoked outside of sphinx (which is not practical
+with tools like readthedocs), and because some customization is done (eg. for
+aiocoap.numbers).
+
+
+for both hacks, suggestions for cleaner solutions that keep the git tree free
+of generated files are appreciated.
+
+man pages
+=========
+
+the build_sphinx command sphinx hooks into distutils is only capable of
+building one output format (and html is a sane default). if you want man pages,
+run the following:
+
+    $ python3 -m sphinx -b man doc/ build/sphinx/man

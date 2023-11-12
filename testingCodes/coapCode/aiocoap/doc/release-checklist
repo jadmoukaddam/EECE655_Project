@@ -1,0 +1,18 @@
+Notes to the maintainer on what to do during a release
+======================================================
+
+* Update NEWS file
+* Bump versions in aiocoap/meta.py, and at the head of NEWS
+* Commit: git commit -m "Prepare $VERSION release"
+* Tag it: git tag -as "$VERSION" -m "$VERSION"
+* Clean up: git stash -u; git clean -fxd
+* Build it: python3 -m build
+  (This builds, by default, both tar ball and wheel)
+* Upload it: twine upload ./dist/aiocoap-"$VERSION"{.tar.gz,-py3-none-any.whl}
+* Push it: git push github master --tags; git push gitlab master --tags
+* log in to readthedocs, add new tag as new version
+* Bump versions to add a ".post0"
+  * Commit that: git commit -m "Bump version to .post0 to indicate development"
+
+    (This serves to indicate that anything built from git is not identical to
+    the last release.)

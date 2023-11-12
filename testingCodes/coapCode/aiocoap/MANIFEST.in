@@ -1,0 +1,6 @@
+include *.py
+include contrib/*
+include contrib/*/*
+include doc/*
+include LICENSES/*
+include NEWS

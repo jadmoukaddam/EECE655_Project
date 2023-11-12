@@ -1,0 +1,141 @@
+#!/usr/bin/env python3
+# SPDX-FileCopyrightText: Christian Amsüss and the aiocoap contributors
+#
+# SPDX-License-Identifier: MIT
+
+"""A minimal server that can be placed where an RD might be auto-discovered,
+and announces the resources on a full resource directory.
+
+This is "minimal" because it only does two things:
+
+    * Let clients query for Resource Directories from an explicitly configured
+      list of links
+    * Accept simple registrations and forward them as simple registrations to a
+      configured RD. This expects that the actual RD accepts con= on a simple
+      registration, which will probably be disallowed.
+
+It does not (but could be extended to) discover RDs or their resources on its
+own, or allow the list of servers to be updated remotely.
+
+While basically usable (eg. on 6LoWPAN border routers), it is more considered a
+demo; the devices on which such functionality is expected to run might easily
+prefer a more constrained implementation."""
+
+import argparse
+import logging
+from urllib.parse import urljoin
+import asyncio
+
+from aiocoap import Message, GET, POST, CHANGED, CONTENT
+from aiocoap.error import NotFound, MethodNotAllowed, AnonymousHost, BadRequest
+from aiocoap.resource import WKCResource, Site
+from aiocoap.cli.common import (add_server_arguments,
+        server_context_from_arguments)
+from aiocoap.util.cli import AsyncCLIDaemon
+from aiocoap.util.linkformat import LinkFormat, Link, parse
+
+class RelayingWKC(WKCResource):
+    def __init__(self):
+        self.links = LinkFormat()
+        self.forward = None
+
+        super().__init__(listgenerator=lambda: self.links)
+
+    async def setup(self, rd_uri):
+        # FIXME: deduplicate with .client.register (esp. when that recognizes more than just multicast)
+        rd_uri = rd_uri or 'coap://[ff05::fd]'
+        rd_wkc = urljoin(rd_uri, '/.well-known/core?rt=core.rd*')
+        if not rd_wkc.startswith(rd_uri):
+            print("Ignoring path of given RD argument")
+
+        # This would request to self too if the RD is on the LAN, but
+        # fortunately .wk/c filtering triggers and we don't get a response from
+        # self b/c there's nothing to report yet.
+        uri_response = await self.context.request(
+                Message(code=GET, uri=rd_wkc)
+                ).response_raising
+
+        if uri_response.code != CONTENT:
+            raise RuntimeError("Unexpected response code %s" % uri_response.code)
+
+        if uri_response.opt.content_format != 40:
+            raise RuntimeError("Unexpected response content format %s" % uri_response.opt.content_format)
+        links = parse(uri_response.payload.decode('utf8'))
+
+        relayable = ("core.rd-lookup-ep", "core.rd-lookup-res", "core.rd-lookup-gp", "core.rd", "core.rd-group")
+        for l in links.links:
+            rt = (" ".join(l.rt)).split(" ")
+            rt_relayable = [r for r in rt if r in relayable]
+            if rt_relayable:
+                target = l.get_target(uri_response.get_request_uri())
+                new = Link(target, rt=" ".join(rt_relayable), rel="x-see-also")
+                print("Exporting link: %s" % new)
+                self.links.links.append(new)
+                if "core.rd" in rt:
+                    print("Using that link as target for simple registration")
+                    self.forward = target
+
+    async def render_post(self, request):
+        if self.forward is None:
+            raise MethodNotAllowed
+
+        try:
+            client_uri = request.remote.uri
+        except AnonymousHost:
+            raise BadRequest("explicit base required")
+        # FIXME: deduplicate with aiocoap.cli.rd.SimpleRegistrationWKC
+        args = request.opt.uri_query
+        if any (a.startswith('base=') for a in args):
+            raise BadRequest("base is not allowed in simple registrations")
+        # FIXME: Could do some formal checks on those, like whether the lifetime is numeric
+
+        async def work():
+            get_wkc = Message(code=GET, uri=urljoin(client_uri, '/.well-known/core'))
+            response = await self.context.request(get_wkc).response_raising
+
+            if response.code != CONTENT:
+                raise RuntimeError("Odd response code from %s" % client_uri)
+
+            fwd = Message(code=POST,
+                    uri=self.forward,
+                    content_format=response.opt.content_format,
+                    payload=response.payload,
+                    )
+            fwd.opt.uri_query = args + ('base=%s' % client_uri,)
+            await self.context.request(fwd).response
+
+        asyncio.ensure_future(work())
+
+        return Message(code=CHANGED)
+
+class RDRelayProgram(AsyncCLIDaemon):
+    async def start(self):
+        p = argparse.ArgumentParser()
+        p.add_argument("-v", "--verbose", help="Be more verbose (repeat to debug)", action='count', dest="verbosity", default=0)
+        p.add_argument("rd_uri", help="Preconfigured address of the resource directory", nargs='?')
+
+        add_server_arguments(p)
+
+        opts = p.parse_args()
+
+        if opts.verbosity > 1:
+            logging.basicConfig(level=logging.DEBUG)
+        elif opts.verbosity == 1:
+            logging.basicConfig(level=logging.INFO)
+        else:
+            logging.basicConfig(level=logging.WARNING)
+
+        site = Site()
+        wkc = RelayingWKC()
+        site.add_resource(['.well-known', 'core'], wkc)
+
+        self.context = await server_context_from_arguments(site, opts)
+        wkc.context = self.context
+        await wkc.setup(opts.rd_uri)
+        print("Resource directory relay operational")
+
+    async def shutdown(self):
+        await self.context.shutdown()
+
+if __name__ == "__main__":
+    RDRelayProgram.sync_main()
