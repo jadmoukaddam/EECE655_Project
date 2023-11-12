@@ -146,7 +146,7 @@ async def main():
     root.add_resource(['other', 'separate'], SeparateLargeResource())
     root.add_resource(['whoami'], WhoAmI())
 
-    await aiocoap.Context.create_server_context(root)
+    await aiocoap.Context.create_server_context(bind=('192.168.1.11',5683),site=root)
 
     # Run forever
     await asyncio.get_running_loop().create_future()
