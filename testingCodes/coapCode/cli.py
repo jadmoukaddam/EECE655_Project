@@ -127,21 +127,25 @@ logging.basicConfig(level=logging.ERROR)
 Times = [0]
 Threads=[]
 async def sendmsg(index):
-	i=0
-	total=0
-	protocol = await Context.create_client_context()
-	request = Message(code=GET, uri='coap://192.168.1.11/time', transport_tuning=TransportTuning2)
-	while(i<100):
-		start = time.time()
-#		try:
-		response = await asyncio.wait_for(protocol.request(request).response,timeout=200)
-#		except:
-#			protocol = await Context.create_client_context()
-#			continue
-		end = time.time()
-		total += end-start
-		i+=1
-	Times[index]=total
+    i=0
+    total=0
+    #protocol = await Context.create_client_context()
+    #request = Message(code=GET, uri='coap://172.20.10.1/time', transport_tuning=TransportTuning2)
+    while(i<100):
+        start = time.time()
+        try:
+            protocol = await Context.create_client_context()
+            request = Message(code=GET, uri='coap://172.20.10.1/time', transport_tuning=TransportTuning2)
+            response = await asyncio.wait_for(protocol.request(request).response, timeout=30)
+        except Exception as e:
+            # Handle specific exceptions if needed
+            continue
+        finally:
+            await protocol.shutdown()
+        end = time.time()
+        total += end-start
+        i+=1
+    Times[index]=total
 
 
 async def main():
