@@ -5,16 +5,17 @@ from datetime import datetime, timezone
 import socket
 import aiocoap
 
-
+messages=[]
 # receiver will open threads to listen to both protocols at the same time
 # when it receives a message it will add it to a shared list
 
 def on_connect(client, userdata, flags, rc):
     print("Connected with result code "+str(rc))
-    client.subscribe("testtopic/#")
 
 def on_message(client, userdata, msg):
-    print(msg.topic+" "+str(msg.payload))
+    global messages
+    messages.append([msg.topic,round(datetime.now(timezone.utc).timestamp(),6)])
+    print("received")
 
 def on_publish(client, userdata, mid):
     print("Message "+str(mid)+" published.")
@@ -28,10 +29,12 @@ client.on_message = on_message
 client.on_publish = on_publish
 client.on_subscribe = on_subscribe
 
-client.connect("localhost", 1883, 60)
+client.connect("localhost", 1883)
 
-def mqttlistener(received):
-    pass
+qos=1
+client.subscribe("test",qos)
+
+mqttlistener=threading.Thread(target=client.loop_forever)
 
 
 def coaplistener(received):
@@ -40,8 +43,4 @@ def coaplistener(received):
 
 
 def main(received):
-    processed=0
-    while True:
-        if len(received)>processed:
-            print(received[processed])
-            processed+=1
+    pass
