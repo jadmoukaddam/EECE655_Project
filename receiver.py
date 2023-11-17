@@ -1,9 +1,8 @@
 import paho.mqtt.client as mqtt
-import time
 import threading
 from datetime import datetime, timezone
-import socket
 import aiocoap
+import logging
 
 messages=[]
 # receiver will open threads to listen to both protocols at the same time
@@ -14,8 +13,8 @@ def on_connect(client, userdata, flags, rc):
 
 def on_message(client, userdata, msg):
     global messages
-    messages.append([msg.topic,round(datetime.now(timezone.utc).timestamp(),6)])
-    print("received")
+    messages.append([msg.payload.decode('utf-8'),round(datetime.now(timezone.utc).timestamp(),6)])
+    print("received mqtt")
 
 def on_publish(client, userdata, mid):
     print("Message "+str(mid)+" published.")
@@ -37,10 +36,43 @@ client.subscribe("test",qos)
 mqttlistener=threading.Thread(target=client.loop_forever)
 
 
-def coaplistener(received):
-    pass
+
+class CoAPResource(aiocoap.Resource):
+    def render_post(self, request):
+        global messages
+        payload = request.payload.decode('utf-8')
+        print(f"Received coap")
+        messages.append([payload,round(datetime.now(timezone.utc).timestamp(),6)])
+        return aiocoap.Message(payload=payload.encode('utf-8'))
+
+def coap_server():
+    logging.basicConfig(level=logging.INFO)
+
+    context = aiocoap.Context()
+    resource = CoAPResource()
+    context.add_resource(('localhost', 5683), resource)
+
+    try:
+        context.run()
+    except KeyboardInterrupt:
+        print("Server terminated by user.")
+
+coaplistener=threading.Thread(target=coap_server)
 
 
 
-def main(received):
-    pass
+def main():
+    global messages
+    mqttlistener.start()
+    coaplistener.start()
+    while True:
+        if len(messages)>1000:
+            break
+    
+    #compute the average delay
+    delays=[]
+    for i in range(0,len(messages)):
+        delay=messages[i][1]-float(messages[i][0])
+        delays.append(delay)
+    avgdelay=sum(delays)/len(delays)
+    print(f"Average delay: {avgdelay}")
