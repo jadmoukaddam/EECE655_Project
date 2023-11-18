@@ -12,13 +12,13 @@ import logging
 import asyncio
 import threading
 import time
-import random
 from aiocoap import *
 import paho.mqtt.client as mqtt
-import time
-import threading
-from datetime import datetime, timezone
 import socket
+
+IP_receiver="192.168.0.0"
+IP_broker="192.168.0.1"
+packets_sent = 0
 class TransportTuning2(TransportTuning):
     """Base parameters that guide CoAP transport behaviors
 
@@ -132,45 +132,64 @@ class TransportTuning2(TransportTuning):
 logging.basicConfig(level=logging.ERROR)
 Times = [0]
 Threads=[]
-async def sendmsg(index):
+async def sendmsg_CoAP(index):
     i=0
     total=0
     #protocol = await Context.create_client_context()
     #request = Message(code=GET, uri='coap://172.20.10.1/time', transport_tuning=TransportTuning2)
-    Message_ID = random.randint(0,65535)
-    start = time.time()
-    while(i<100):
+    not_sent = True
+    while(not_sent):
         try:
-            print(Message_ID)
             protocol = await Context.create_client_context()
-            request = Message(code=GET, uri='coap://10.169.12.1/time', transport_tuning=TransportTuning2)
+            request = Message(code=GET, uri='coap://'+IP_receiver+'/time', transport_tuning=TransportTuning2)
             response = await asyncio.wait_for(protocol.request(request).response, timeout=30)
+            not_sent = False
         except Exception as e:
-            # Handle specific exceptions if needed
             continue
         finally:
             await protocol.shutdown()
-        end = time.time()
-        Message_ID = random.randint(0,65535)
-        total += end-start
-        i+=1
-        start = time.time()
-    Times[index]=total
 
+def on_connect(client, userdata, flags, rc):
+    print("Connected with result code "+str(rc))
+
+def on_publish(client, userdata, mid):
+    print("Message "+str(mid)+" published.")
+
+def on_subscribe(client, userdata, mid, granted_qos):
+    print("Subscribed: "+str(mid)+" "+str(granted_qos))
+
+def on_message(client, userdata, msg):
+    print(msg.topic+" "+str(msg.payload))
+
+
+def sendmsg_MQTT(client,qos):
+    client.publish("python/mqtt", str(round(datetime.now(timezone.utc).timestamp(),6)).ljust(17,'0'),qos)
+
+def sendmsg():
+    if packet_loss<0.3:
+        sendmsg_MQTT(client,1)
+    else:
+        sendmsg_CoAP(0)
 
 async def main():
+    client = mqtt.Client()
+    client.on_connect = on_connect
+    client.on_publish = on_publish
+    client.on_subscribe = on_subscribe
+    client.on_message = on_message
+    client.connect(IP_broker, 1883)
+    client.socket().setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, True)
+    thread1=threading.Thread(target=client.loop_forever)
+    thread1.start()
+    qos=1
     try:
-        for i in range(1):
-                coroutines = [sendmsg(0)]
-                # Use asyncio.gather() to execute the coroutines concurrently
-                await asyncio.gather(*coroutines)
-                
-        
+        await sendmsg(0)
+    except KeyboardInterrupt as e:
+        print('Result: '+str(sum(Times)/packets_sent))
     except Exception as e:
         print('Failed to fetch resource:')
         print(e)
-    else:
-        print('Result: '+str(sum(Times)/100))
+
 
 if __name__ == "__main__":
     asyncio.run(main())
