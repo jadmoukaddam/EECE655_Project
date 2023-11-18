@@ -15,10 +15,13 @@ import time
 from aiocoap import *
 import paho.mqtt.client as mqtt
 import socket
+from datetime import datetime, timezone
 
-IP_receiver="192.168.0.0"
-IP_broker="192.168.0.1"
+
+IP_receiver="192.168.1.11"
+IP_broker="127.0.0.1"
 packets_sent = 0
+packet_loss = 0.5
 class TransportTuning2(TransportTuning):
     """Base parameters that guide CoAP transport behaviors
 
@@ -132,22 +135,28 @@ class TransportTuning2(TransportTuning):
 logging.basicConfig(level=logging.ERROR)
 Times = [0]
 Threads=[]
-async def sendmsg_CoAP(index):
+client=""
+protocol=""
+async def sendmsg_CoAP(payload):
+    global protocol
+    print(protocol)
     i=0
-    total=0
     #protocol = await Context.create_client_context()
     #request = Message(code=GET, uri='coap://172.20.10.1/time', transport_tuning=TransportTuning2)
     not_sent = True
     while(not_sent):
         try:
-            protocol = await Context.create_client_context()
-            request = Message(code=GET, uri='coap://'+IP_receiver+'/time', transport_tuning=TransportTuning2)
+
+            request = Message(code=POST, uri='coap://'+IP_receiver+'/time', transport_tuning=TransportTuning2, payload=payload.encode('utf-8'))
             response = await asyncio.wait_for(protocol.request(request).response, timeout=30)
             not_sent = False
+        except KeyboardInterrupt as e:
+            break
         except Exception as e:
-            continue
-        finally:
+            print(e)
             await protocol.shutdown()
+            protocol = await Context.create_client_context()
+        
 
 def on_connect(client, userdata, flags, rc):
     print("Connected with result code "+str(rc))
@@ -162,16 +171,24 @@ def on_message(client, userdata, msg):
     print(msg.topic+" "+str(msg.payload))
 
 
-def sendmsg_MQTT(client,qos):
-    client.publish("python/mqtt", str(round(datetime.now(timezone.utc).timestamp(),6)).ljust(17,'0'),qos)
+def sendmsg_MQTT(payload, qos):
+    global client
+    client.publish("python/mqtt", payload, qos)
 
-def sendmsg():
+async def sendmsg():
+    global packet_loss
+    payload = str(round(datetime.now(timezone.utc).timestamp(),6)).ljust(17,'0') 
     if packet_loss<0.3:
-        sendmsg_MQTT(client,1)
+        sendmsg_MQTT(payload, 1)
     else:
-        sendmsg_CoAP(0)
+        await sendmsg_CoAP(payload)
 
-async def main():
+async def setup_coap():
+    global protocol
+    protocol = await Context.create_client_context()
+ 
+def setup_mqtt():
+    global client
     client = mqtt.Client()
     client.on_connect = on_connect
     client.on_publish = on_publish
@@ -182,13 +199,17 @@ async def main():
     thread1=threading.Thread(target=client.loop_forever)
     thread1.start()
     qos=1
+    
+
+async def main():
+    await setup_coap()
+    setup_mqtt()
     try:
-        await sendmsg(0)
-    except KeyboardInterrupt as e:
-        print('Result: '+str(sum(Times)/packets_sent))
+            await sendmsg()
     except Exception as e:
-        print('Failed to fetch resource:')
+        print('Failed to send resource:')
         print(e)
+        exit()
 
 
 if __name__ == "__main__":
