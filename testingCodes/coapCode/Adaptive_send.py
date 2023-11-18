@@ -11,6 +11,7 @@ for some more information."""
 import logging
 import asyncio
 import threading
+import subprocess
 import time
 from aiocoap import *
 import paho.mqtt.client as mqtt
@@ -21,7 +22,7 @@ from datetime import datetime, timezone
 IP_receiver="192.168.1.11"
 IP_broker="127.0.0.1"
 packets_sent = 0
-packet_loss = 0.5
+packet_loss = 0
 class TransportTuning2(TransportTuning):
     """Base parameters that guide CoAP transport behaviors
 
@@ -200,17 +201,31 @@ def setup_mqtt():
     thread1.start()
     qos=1
     
+def calculate_packet_loss(target_ip):
+    global packet_loss
+    go_ping = f"ping -c 20 -i 2 {target_ip}"
+    result = subprocess.run(go_ping, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    for line in result.stdout.split('\n'):
+        if 'packet loss' in line:
+            packet_loss = float(line.split('%')[0].split()[-1]) / 100
+            print(f"Updated packet loss: {packet_loss}")
+    return packet_loss 
+
+def upldate_packet_loss():
+    global IP_receiver
+    packet_loss_thread = threading.Thread(target=calculate_packet_loss, args=(IP_receiver,))
+    packet_loss_thread.start()
 
 async def main():
     await setup_coap()
     setup_mqtt()
+    upldate_packet_loss()
     try:
-            await sendmsg()
+        await sendmsg()
     except Exception as e:
         print('Failed to send resource:')
         print(e)
         exit()
-
 
 if __name__ == "__main__":
     asyncio.run(main())
