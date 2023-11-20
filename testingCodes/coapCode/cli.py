@@ -133,31 +133,24 @@ logging.basicConfig(level=logging.ERROR)
 Times = [0]
 Threads=[]
 async def sendmsg(index):
-    print("HERE")
-    i=0
-    total=0
     #protocol = await Context.create_client_context()
     #request = Message(code=GET, uri='coap://172.20.10.1/time', transport_tuning=TransportTuning2)
     Message_ID = random.randint(0,65535)
     start = time.time()
-    while(i<1):
-        try:
-            print(Message_ID)
-            protocol = await Context.create_client_context()
-            request = Message(code=GET, uri='coap://193.168.1.12/time', transport_tuning=TransportTuning2)
-            response = await asyncio.wait_for(protocol.request(request).response, timeout=30)
-            print(response)
-        except Exception as e:
-            # Handle specific exceptions if needed
-            print("EXCEPT")
-            continue
-        finally:
-            await protocol.shutdown()
-        end = time.time()
-        Message_ID = random.randint(0,65535)
-        total += end-start
-        i+=1
-        start = time.time()
+    try:
+        protocol = await Context.create_client_context()
+        request = Message(code=GET, uri='coap://193.168.1.12/time', transport_tuning=TransportTuning2)
+        response = await asyncio.wait_for(protocol.request(request).response, timeout=30)
+        print(response)
+    except Exception as e:
+        # Handle specific exceptions if needed
+        print("EXCEPT")
+    finally:
+        await protocol.shutdown()
+    end = time.time()
+    Message_ID = random.randint(0,65535)
+    total += end-start
+    start = time.time()
     Times[index]=total
 
 
@@ -167,7 +160,7 @@ async def main():
         #        coroutines = [sendmsg(0)]
         #        # Use asyncio.gather() to execute the coroutines concurrently
         #        await asyncio.gather(*coroutines)
-        for i in range(10):
+        for i in range(100):
             asyncio.create_task(sendmsg(0))
             await asyncio.sleep(1)
 
