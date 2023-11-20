@@ -168,10 +168,10 @@ async def main():
         #        # Use asyncio.gather() to execute the coroutines concurrently
         #        await asyncio.gather(*coroutines)
         for i in range(10):
-            await sendmsg(0)
-            time.sleep(1)
+            asyncio.create_task(sendmsg(0))
+            await asyncio.sleep(1)
 
-        time.sleep(50)
+        time.sleep(20)
 
      
     except Exception as e:
