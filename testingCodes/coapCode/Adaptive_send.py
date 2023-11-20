@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 IP_receiver="localhost"
 IP_broker="127.0.0.1"
 packets_sent = 0
+packets_lost = 0
 packet_loss = 0
 class TransportTuning2(TransportTuning):
     """Base parameters that guide CoAP transport behaviors
@@ -52,7 +53,7 @@ class TransportTuning2(TransportTuning):
     ACK_RANDOM_FACTOR = 1.5
     """Timeout multiplier for anti-synchronization."""
 
-    MAX_RETRANSMIT = 100
+    MAX_RETRANSMIT = 4
     """The number of retransmissions of confirmable messages to
     non-multicast endpoints before the infrastructure assumes no
     acknowledgement will be received."""
@@ -140,23 +141,15 @@ client=""
 protocol=""
 async def sendmsg_CoAP(payload):
     global protocol
-    print(protocol)
-    i=0
     #protocol = await Context.create_client_context()
     #request = Message(code=GET, uri='coap://172.20.10.1/time', transport_tuning=TransportTuning2)
-    not_sent = True
-    while(not_sent):
-        try:
-
-            request = Message(code=POST, uri='coap://'+IP_receiver+'/time', transport_tuning=TransportTuning2, payload=payload.encode('utf-8'))
-            response = await asyncio.wait_for(protocol.request(request).response, timeout=30)
-            not_sent = False
-        except KeyboardInterrupt as e:
-            break
-        except Exception as e:
-            print(e)
-            await protocol.shutdown()
-            protocol = await Context.create_client_context()
+    try:
+        request = Message(code=POST, uri='coap://'+IP_receiver+'/time', transport_tuning=TransportTuning2, payload=payload.encode('utf-8'))
+        response = await asyncio.wait_for(protocol.request(request).response, timeout=30)
+    except Exception as e:
+        print(e)
+        await protocol.shutdown()
+        protocol = await Context.create_client_context()
         
 
 def on_connect(client, userdata, flags, rc):
@@ -223,12 +216,12 @@ async def main():
     upldate_packet_loss()
     while True:
         try:
-            await sendmsg()
+            asyncio.create_task(sendmsg())
         except Exception as e:
             print('Failed to send resource:')
             print(e)
             exit()
-        i=0
+        asyncio.sleep(1)
 
 if __name__ == "__main__":
     asyncio.run(main())
