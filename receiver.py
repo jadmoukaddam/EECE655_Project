@@ -14,7 +14,7 @@ def on_connect(client, userdata, flags, rc):
 def on_message(client, userdata, msg):
     global messages
     messages.append([msg.payload.decode('utf-8'),round(datetime.now(timezone.utc).timestamp(),6)])
-    print("received mqtt")
+    # print("received mqtt")
 
 def on_publish(client, userdata, mid):
     print("Message "+str(mid)+" published.")
@@ -31,33 +31,38 @@ client.on_subscribe = on_subscribe
 client.connect("localhost", 1883)
 
 qos=1
-client.subscribe("test",qos)
+client.subscribe("python/mqtt",qos)
 
 mqttlistener=threading.Thread(target=client.loop_forever)
 
+import aiocoap.resource as resource
+import asyncio
 
-
-class CoAPResource(aiocoap.Resource):
-    def render_post(self, request):
+class CoAPResource(resource.Resource):
+    async def render_post(self, request):
         global messages
         payload = request.payload.decode('utf-8')
-        print(f"Received coap")
-        messages.append([payload,round(datetime.now(timezone.utc).timestamp(),6)])
+        # print(f"Received coap")
+        messages.append([payload, round(datetime.now(timezone.utc).timestamp(), 6)])
+        # Return the response directly without using 'await'
         return aiocoap.Message(payload=payload.encode('utf-8'))
 
-def coap_server():
+
+async def coap_server():
     logging.basicConfig(level=logging.INFO)
 
-    context = aiocoap.Context()
-    resource = CoAPResource()
-    context.add_resource(('localhost', 5683), resource)
+    # Create a CoAP context with the CoAPResource
+    root = resource.Site()
+    root.add_resource(('coap', 'time'), CoAPResource())
+
+    context = await aiocoap.Context.create_server_context(root, bind=('localhost', 5683))
 
     try:
-        context.run()
+        await asyncio.Future()  # Run forever
     except KeyboardInterrupt:
         print("Server terminated by user.")
 
-coaplistener=threading.Thread(target=coap_server)
+coaplistener = threading.Thread(target=lambda: asyncio.run(coap_server()))
 
 
 
@@ -76,3 +81,6 @@ def main():
         delays.append(delay)
     avgdelay=sum(delays)/len(delays)
     print(f"Average delay: {avgdelay}")
+
+
+main()
