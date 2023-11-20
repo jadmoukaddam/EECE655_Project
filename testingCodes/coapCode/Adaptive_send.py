@@ -19,7 +19,7 @@ import socket
 from datetime import datetime, timezone
 
 
-IP_receiver="192.168.1.11"
+IP_receiver="127.0.0.1"
 IP_broker="127.0.0.1"
 packets_sent = 0
 packet_loss = 0
@@ -227,6 +227,7 @@ async def main():
         print('Failed to send resource:')
         print(e)
         exit()
+    i=0
 
 if __name__ == "__main__":
     asyncio.run(main())
