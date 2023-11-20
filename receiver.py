@@ -14,7 +14,7 @@ def on_connect(client, userdata, flags, rc):
 def on_message(client, userdata, msg):
     global messages
     messages.append([msg.payload.decode('utf-8'),round(datetime.now(timezone.utc).timestamp(),6)])
-    # print("received mqtt")
+    print("received mqtt")
 
 def on_publish(client, userdata, mid):
     print("Message "+str(mid)+" published.")
@@ -42,7 +42,7 @@ class CoAPResource(resource.Resource):
     async def render_post(self, request):
         global messages
         payload = request.payload.decode('utf-8')
-        # print(f"Received coap")
+        print(f"Received coap")
         messages.append([payload, round(datetime.now(timezone.utc).timestamp(), 6)])
         # Return the response directly without using 'await'
         return aiocoap.Message(payload=payload.encode('utf-8'))
@@ -53,7 +53,7 @@ async def coap_server():
 
     # Create a CoAP context with the CoAPResource
     root = resource.Site()
-    root.add_resource(('coap', 'time'), CoAPResource())
+    root.add_resource(('time',), CoAPResource())
 
     context = await aiocoap.Context.create_server_context(root, bind=('localhost', 5683))
 
