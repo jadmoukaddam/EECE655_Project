@@ -19,7 +19,7 @@ import socket
 from datetime import datetime, timezone
 
 
-IP_receiver="127.0.0.1"
+IP_receiver="localhost"
 IP_broker="127.0.0.1"
 packets_sent = 0
 packet_loss = 0
@@ -221,13 +221,14 @@ async def main():
     await setup_coap()
     setup_mqtt()
     upldate_packet_loss()
-    try:
-        await sendmsg()
-    except Exception as e:
-        print('Failed to send resource:')
-        print(e)
-        exit()
-    i=0
+    while True:
+        try:
+            await sendmsg()
+        except Exception as e:
+            print('Failed to send resource:')
+            print(e)
+            exit()
+        i=0
 
 if __name__ == "__main__":
     asyncio.run(main())
