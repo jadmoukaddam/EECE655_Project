@@ -26,6 +26,26 @@ def packet_handler(packet):
             else:
                 mqtt_sequence_numbers.add(sequence_number)
 
+packet_count=0
+
+def count_packet_loss():
+    global coap_sequence_numbers
+    global mqtt_sequence_numbers
+    global packet_count
+    while True:
+        if IP in packet:
+            src_ip = packet[IP].src
+            dst_ip = packet[IP].dst
+
+            if UDP in packet and packet[UDP].dport == 5683:
+                # CoAP
+                packet_count+=1
+
+            elif TCP in packet and packet[TCP].dport == 1883:
+                # MQTT
+                packet_count+=1
+
+
 def main():
     # Adjust the filter as needed to capture the desired traffic
     sniff(filter="ip", prn=packet_handler, store=0, iface="en0")
