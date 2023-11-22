@@ -19,11 +19,12 @@ import socket
 from datetime import datetime, timezone
 
 
-IP_receiver="localhost"
-IP_broker="127.0.0.1"
+IP_receiver="192.168.0.140"
+IP_broker="192.168.0.100"
 packets_sent = 0
 packets_lost = 0
 packet_loss = 0
+mode="Adaptive"
 class TransportTuning2(TransportTuning):
     """Base parameters that guide CoAP transport behaviors
 
@@ -140,17 +141,22 @@ Threads=[]
 client=""
 protocol=""
 async def sendmsg_CoAP(payload):
-    global protocol
+    #global protocol
     #protocol = await Context.create_client_context()
     #request = Message(code=GET, uri='coap://172.20.10.1/time', transport_tuning=TransportTuning2)
     try:
+        protocol = await Context.create_client_context()
         request = Message(code=POST, uri='coap://'+IP_receiver+'/time', transport_tuning=TransportTuning2, payload=payload.encode('utf-8'))
         response = await asyncio.wait_for(protocol.request(request).response, timeout=30)
+
+        print("Message sent with CoAP")
     except Exception as e:
-        print(e)
+        #await protocol.shutdown()
+        pass
+    finally:
         await protocol.shutdown()
-        protocol = await Context.create_client_context()
-        
+
+
 
 def on_connect(client, userdata, flags, rc):
     print("Connected with result code "+str(rc))
@@ -170,17 +176,17 @@ def sendmsg_MQTT(payload, qos):
     client.publish("python/mqtt", payload, qos)
 
 async def sendmsg():
-    global packet_loss
-    payload = str(round(datetime.now(timezone.utc).timestamp(),6)).ljust(17,'0') 
-    if packet_loss<0.3:
+    global packet_loss, mode
+    payload = str(round(datetime.now(timezone.utc).timestamp(),6)).ljust(17,'0')
+    if mode== "MQTT" or (mode == "Adaptive" and packet_loss<0.3):
         sendmsg_MQTT(payload, 1)
     else:
-        await sendmsg_CoAP(payload)
+         asyncio.create_task(sendmsg_CoAP(payload))
 
 async def setup_coap():
     global protocol
     protocol = await Context.create_client_context()
- 
+
 def setup_mqtt():
     global client
     client = mqtt.Client()
@@ -193,17 +199,20 @@ def setup_mqtt():
     thread1=threading.Thread(target=client.loop_forever)
     thread1.start()
     qos=1
-    
+
+def set_mode(m):
+    global mode
+    mode = m
+
 def calculate_packet_loss(target_ip):
     global packet_loss
     while True:
-        go_ping = f"ping -c 20 -i 2 {target_ip}"
+        go_ping = f"ping -c 20 -i 0.5 {target_ip}"
         result = subprocess.run(go_ping, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         for line in result.stdout.split('\n'):
             if 'packet loss' in line:
                 packet_loss = float(line.split('%')[0].split()[-1]) / 100
-                print(f"Updated packet loss: {packet_loss}")
-        return packet_loss 
+                print(f"Jado my baby the packet loss is: {packet_loss} wink wink")
 
 def upldate_packet_loss():
     global IP_receiver
@@ -211,17 +220,22 @@ def upldate_packet_loss():
     packet_loss_thread.start()
 
 async def main():
+    set_mode("MQTT")
     await setup_coap()
     setup_mqtt()
     upldate_packet_loss()
-    while True:
+    i=0
+    while i<1000:
         try:
-            asyncio.create_task(sendmsg())
+            await sendmsg()
         except Exception as e:
             print('Failed to send resource:')
             print(e)
             exit()
-        asyncio.sleep(1)
+        await asyncio.sleep(0.1)
+        i+=1
+    await asyncio.sleep(10)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
