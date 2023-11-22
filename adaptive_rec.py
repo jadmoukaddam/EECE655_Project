@@ -3,7 +3,7 @@ import threading
 from datetime import datetime, timezone
 import aiocoap
 import logging
-
+packets=0
 messages=[]
 # receiver will open threads to listen to both protocols at the same time
 # when it receives a message it will add it to a shared list
@@ -13,8 +13,10 @@ def on_connect(client, userdata, flags, rc):
 
 def on_message(client, userdata, msg):
     global messages
+    global packets
     messages.append([msg.payload.decode('utf-8'),round(datetime.now(timezone.utc).timestamp(),6)])
-    print("received mqtt")
+    packets+=1
+    print("received mqtt", packets)
 
 def on_publish(client, userdata, mid):
     print("Message "+str(mid)+" published.")
@@ -28,7 +30,7 @@ client.on_message = on_message
 client.on_publish = on_publish
 client.on_subscribe = on_subscribe
 
-client.connect("localhost", 1883)
+client.connect("192.168.0.100", 1883)
 
 qos=1
 client.subscribe("python/mqtt",qos)
@@ -41,8 +43,10 @@ import asyncio
 class CoAPResource(resource.Resource):
     async def render_post(self, request):
         global messages
+        global packets
         payload = request.payload.decode('utf-8')
-        print(f"Received coap")
+        packets+=1
+        print(f"Received coap", packets)
         messages.append([payload, round(datetime.now(timezone.utc).timestamp(), 6)])
         # Return the response directly without using 'await'
         return aiocoap.Message(payload=payload.encode('utf-8'))
@@ -55,7 +59,7 @@ async def coap_server():
     root = resource.Site()
     root.add_resource(('time',), CoAPResource())
 
-    context = await aiocoap.Context.create_server_context(root, bind=('localhost', 5683))
+    context = await aiocoap.Context.create_server_context(root, bind=('192.168.0.140', 5683))
 
     try:
         await asyncio.Future()  # Run forever
@@ -71,7 +75,7 @@ def main():
     mqttlistener.start()
     coaplistener.start()
     while True:
-        if len(messages)>1000:
+        if len(messages)>=300:
             break
     
     #compute the average delay
