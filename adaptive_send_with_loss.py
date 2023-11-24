@@ -18,12 +18,15 @@ import paho.mqtt.client as mqtt
 import socket
 from datetime import datetime, timezone
 
+import detectloss
+
 
 IP_receiver="192.168.0.140"
 IP_broker="192.168.0.102"
 packets_sent = 0
 packets_lost = 0
 packet_loss = 0
+packet_count=0
 mode="Adaptive"
 class TransportTuning2(TransportTuning):
     """Base parameters that guide CoAP transport behaviors
@@ -141,6 +144,7 @@ Threads=[]
 client=""
 protocol=""
 async def sendmsg_CoAP(payload):
+    global packet_count
     #global protocol
     #protocol = await Context.create_client_context()
     #request = Message(code=GET, uri='coap://172.20.10.1/time', transport_tuning=TransportTuning2)
@@ -150,6 +154,7 @@ async def sendmsg_CoAP(payload):
         response = await asyncio.wait_for(protocol.request(request).response, timeout=30)
 
         print("Message sent with CoAP")
+        print('packets sent', packet_count)
     except Exception as e:
         #await protocol.shutdown()
         pass
@@ -162,7 +167,9 @@ def on_connect(client, userdata, flags, rc):
     print("Connected with result code "+str(rc))
 
 def on_publish(client, userdata, mid):
+    global packet_count
     print("Message "+str(mid)+" published.")
+    print('packets sent', packet_count)
 
 def on_subscribe(client, userdata, mid, granted_qos):
     print("Subscribed: "+str(mid)+" "+str(granted_qos))
@@ -181,7 +188,7 @@ async def sendmsg():
     if mode== "MQTT" or (mode == "Adaptive" and packet_loss<0.3):
         sendmsg_MQTT(payload, 1)
     else:
-         asyncio.create_task(sendmsg_CoAP(payload))
+        asyncio.create_task(sendmsg_CoAP(payload))
 
 async def setup_coap():
     global protocol
@@ -224,6 +231,7 @@ async def main():
     await setup_coap()
     setup_mqtt()
     upldate_packet_loss()
+    threading.Thread(target=counter).start()
     i=0
     while i<1000:
         try:
@@ -235,6 +243,29 @@ async def main():
         await asyncio.sleep(0.1)
         i+=1
     await asyncio.sleep(10)
+
+from scapy.all import *
+
+def count_packet_loss(packet):
+    global packet_count
+    while True:
+        print(packet)
+        if IP in packet:
+
+            if UDP in packet and packet[UDP].dport == 5683:
+                # CoAP
+                packet_count+=1
+                # print(packet_count)
+
+            elif TCP in packet and packet[TCP].dport == 1883:
+                # MQTT
+                packet_count+=1
+                # print(packet_count)
+
+
+def counter():
+    # Adjust the filter as needed to capture the desired traffic
+    sniff(filter="tcp or udp", prn=count_packet_loss, iface="lo0")
 
 
 if __name__ == "__main__":
